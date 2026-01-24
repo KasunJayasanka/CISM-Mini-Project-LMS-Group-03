@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15
+    container_name: skylearn_db
+    environment:
+      POSTGRES_DB: skylearn_db
+      POSTGRES_USER: skylearn_user
+      POSTGRES_PASSWORD: skylearn_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - skylearn_network
+
+  web:
+    build: .
+    container_name: skylearn_web
+    command: python manage.py runserver 0.0.0.0:8000
+    volumes:
+      - .:/app
+      - static_volume:/app/static
+      - media_volume:/app/media
+    ports:
+      - "8000:8000"
+    environment:
+      - DEBUG=True
+      - SECRET_KEY=your-secret-key-here-change-in-production
+      - DATABASE_URL=postgresql://skylearn_user:skylearn_password@db:5432/skylearn_db
+      - ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0  # Added 0.0.0.0
+      - DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0  # Added this line
+    depends_on:
+      - db
+    networks:
+      - skylearn_network
+
+volumes:
+  postgres_data:
+  static_volume:
+  media_volume:
+
+networks:
+  skylearn_network:
+    driver: bridge
