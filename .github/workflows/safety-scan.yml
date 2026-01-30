@@ -1,0 +1,175 @@
+name: Safety Python Dependency Scanner
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master, develop ]
+  schedule:
+    - cron: '0 12 * * 4'  # Run weekly on Thursdays at 12 PM UTC
+  workflow_dispatch:
+
+jobs:
+  safety-scan:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      
+      - name: Install Safety
+        run: |
+          python -m pip install --upgrade pip
+          pip install safety
+      
+      - name: Scan requirements/base.txt
+        if: always()
+        run: |
+          safety check --file requirements/base.txt \
+            --output json \
+            --save-json safety-base-report.json \
+            || true
+      
+      - name: Scan requirements/local.txt
+        if: always()
+        run: |
+          safety check --file requirements/local.txt \
+            --output json \
+            --save-json safety-local-report.json \
+            || true
+      
+      - name: Scan requirements/production.txt
+        if: always()
+        run: |
+          safety check --file requirements/production.txt \
+            --output json \
+            --save-json safety-production-report.json \
+            || true
+      
+      - name: Scan main requirements.txt
+        if: always()
+        run: |
+          if [ -f requirements.txt ]; then
+            safety check --file requirements.txt \
+              --output json \
+              --save-json safety-main-report.json \
+              || true
+          fi
+      
+      - name: Generate Combined HTML Report
+        if: always()
+        run: |
+          cat > safety-combined-report.html <<'EOF'
+          <!DOCTYPE html>
+          <html>
+          <head>
+              <title>Safety Scan Report - SkyLearn LMS</title>
+              <style>
+                  body { font-family: Arial, sans-serif; margin: 20px; }
+                  h1 { color: #d9534f; }
+                  .vulnerability { border: 1px solid #d9534f; padding: 10px; margin: 10px 0; background: #f9f9f9; }
+                  .severity-high { border-left: 5px solid #d9534f; }
+                  .severity-medium { border-left: 5px solid #f0ad4e; }
+                  .severity-low { border-left: 5px solid #5bc0de; }
+              </style>
+          </head>
+          <body>
+              <h1>🔒 Safety Python Dependency Scan Report</h1>
+              <p><strong>Generated:</strong> $(date)</p>
+              <p><strong>Project:</strong> SkyLearn LMS</p>
+              <hr>
+          EOF
+          
+          for report in safety-*-report.json; do
+            if [ -f "$report" ]; then
+              echo "<h2>Report: $report</h2>" >> safety-combined-report.html
+              python -c "
+          import json
+          import sys
+          
+          try:
+              with open('$report', 'r') as f:
+                  data = json.load(f)
+              
+              vulns = data.get('vulnerabilities', [])
+              if not vulns:
+                  print('<p>✅ No vulnerabilities found!</p>')
+              else:
+                  for vuln in vulns:
+                      pkg = vuln.get('package', 'Unknown')
+                      vuln_id = vuln.get('vulnerability_id', 'N/A')
+                      severity = vuln.get('severity', 'unknown').lower()
+                      affected = vuln.get('affected_versions', 'N/A')
+                      print(f'<div class=\"vulnerability severity-{severity}\">')
+                      print(f'<h3>{pkg} - {vuln_id}</h3>')
+                      print(f'<p><strong>Severity:</strong> {severity}</p>')
+                      print(f'<p><strong>Affected Versions:</strong> {affected}</p>')
+                      print('</div>')
+          except:
+              print('<p>Error parsing report</p>')
+          " >> safety-combined-report.html
+            fi
+          done
+          
+          echo "</body></html>" >> safety-combined-report.html
+      
+      - name: Upload Safety Reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: safety-security-reports
+          path: |
+            safety-*-report.json
+            safety-combined-report.html
+          retention-days: 30
+      
+      - name: Generate Summary
+        if: always()
+        run: |
+          echo "## 🔒 Safety Python Dependency Scan Summary" > safety-summary.txt
+          echo "" >> safety-summary.txt
+          
+          for report in safety-*-report.json; do
+            if [ -f "$report" ]; then
+              echo "### $report" >> safety-summary.txt
+              python -c "
+          import json
+          try:
+              with open('$report', 'r') as f:
+                  data = json.load(f)
+              vulns = data.get('vulnerabilities', [])
+              print(f'- **Total Vulnerabilities:** {len(vulns)}')
+              if vulns:
+                  for vuln in vulns[:3]:  # Show first 3
+                      pkg = vuln.get('package', 'Unknown')
+                      vuln_id = vuln.get('vulnerability_id', 'N/A')
+                      print(f'  - {pkg}: {vuln_id}')
+          except:
+              print('- Error reading report')
+          " >> safety-summary.txt
+              echo "" >> safety-summary.txt
+            fi
+          done
+      
+      - name: Comment PR with Results
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            try {
+              const summary = fs.readFileSync('safety-summary.txt', 'utf8');
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: summary
+              });
+            } catch (error) {
+              console.log('Summary file not found');
+            }

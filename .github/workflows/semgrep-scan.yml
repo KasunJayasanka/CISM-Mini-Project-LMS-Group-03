@@ -1,0 +1,144 @@
+name: Semgrep Static Analysis
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master, develop ]
+  schedule:
+    - cron: '0 13 * * 5'  # Run weekly on Fridays at 1 PM UTC
+  workflow_dispatch:
+
+jobs:
+  semgrep-scan:
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: read
+      security-events: write
+    
+    container:
+      image: returntocorp/semgrep
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Run Semgrep with Auto Config
+        run: |
+          semgrep scan --config=auto \
+            --sarif \
+            --output=semgrep-results.sarif \
+            --json-output=semgrep-report.json \
+            || true
+      
+      - name: Run Semgrep with Python Security Rules
+        run: |
+          semgrep scan --config=p/python \
+            --json-output=semgrep-python-report.json \
+            || true
+      
+      - name: Run Semgrep with Django Security Rules
+        run: |
+          semgrep scan --config=p/django \
+            --json-output=semgrep-django-report.json \
+            || true
+      
+      - name: Run Semgrep with OWASP Top 10
+        run: |
+          semgrep scan --config=p/owasp-top-ten \
+            --json-output=semgrep-owasp-report.json \
+            || true
+      
+      - name: Run Semgrep with SQL Injection Rules
+        run: |
+          semgrep scan --config=p/sql-injection \
+            --json-output=semgrep-sqli-report.json \
+            || true
+      
+      - name: Run Semgrep with XSS Rules
+        run: |
+          semgrep scan --config=p/xss \
+            --json-output=semgrep-xss-report.json \
+            || true
+      
+      - name: Upload Semgrep SARIF to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: semgrep-results.sarif
+      
+      - name: Upload Semgrep Reports as Artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: semgrep-security-reports
+          path: |
+            semgrep-*.json
+            semgrep-results.sarif
+          retention-days: 30
+      
+      - name: Generate Summary Report
+        if: always()
+        run: |
+          cat > semgrep-summary.md <<'EOF'
+          ## 🔍 Semgrep Static Analysis Results
+          
+          ### Scan Configurations
+          - ✅ Auto Configuration
+          - 🐍 Python Security Rules
+          - 🌐 Django Security Rules
+          - 🛡️ OWASP Top 10
+          - 💉 SQL Injection Detection
+          - 🔓 XSS Detection
+          
+          ### Results Summary
+          EOF
+          
+          for report in semgrep-*-report.json; do
+            if [ -f "$report" ]; then
+              echo "#### $(basename $report .json)" >> semgrep-summary.md
+              python3 -c "
+          import json
+          import sys
+          
+          try:
+              with open('$report', 'r') as f:
+                  data = json.load(f)
+              
+              results = data.get('results', [])
+              errors = len([r for r in results if r.get('extra', {}).get('severity') == 'ERROR'])
+              warnings = len([r for r in results if r.get('extra', {}).get('severity') == 'WARNING'])
+              
+              print(f'- **Errors**: {errors}')
+              print(f'- **Warnings**: {warnings}')
+              print(f'- **Total Findings**: {len(results)}')
+              print()
+          except Exception as e:
+              print(f'Error processing report: {e}')
+          " >> semgrep-summary.md
+            fi
+          done
+          
+          echo "---" >> semgrep-summary.md
+          echo "📊 Check artifacts for detailed reports" >> semgrep-summary.md
+          
+          cat semgrep-summary.md
+      
+      - name: Comment PR with Results
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            try {
+              const summary = fs.readFileSync('semgrep-summary.md', 'utf8');
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: summary
+              });
+            } catch (error) {
+              console.log('Summary file not found');
+            }

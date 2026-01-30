@@ -1,0 +1,401 @@
+name: Security Dashboard
+
+on:
+  workflow_run:
+    workflows: 
+      - "OWASP Dependency-Check"
+      - "Trivy Security Scan"
+      - "Bandit Python Security Scan"
+      - "Safety Python Dependency Scanner"
+      - "Semgrep Static Analysis"
+      - "TruffleHog Secret Scanning"
+    types:
+      - completed
+  schedule:
+    - cron: '0 8 * * 1'  # Weekly summary on Mondays at 8 AM UTC
+  workflow_dispatch:
+
+jobs:
+  generate-dashboard:
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: read
+      actions: read
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      
+      - name: Generate Security Dashboard
+        run: |
+          python3 <<'PYTHON_SCRIPT'
+          import json
+          from datetime import datetime
+          
+          dashboard_html = f"""
+          <!DOCTYPE html>
+          <html>
+          <head>
+              <title>SkyLearn LMS - Security Dashboard</title>
+              <meta charset="UTF-8">
+              <style>
+                  * {{
+                      margin: 0;
+                      padding: 0;
+                      box-sizing: border-box;
+                  }}
+                  body {{
+                      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                      padding: 20px;
+                  }}
+                  .container {{
+                      max-width: 1400px;
+                      margin: 0 auto;
+                      background: white;
+                      border-radius: 15px;
+                      box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+                      overflow: hidden;
+                  }}
+                  .header {{
+                      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                      color: white;
+                      padding: 40px;
+                      text-align: center;
+                  }}
+                  .header h1 {{
+                      font-size: 2.5em;
+                      margin-bottom: 10px;
+                  }}
+                  .header p {{
+                      font-size: 1.2em;
+                      opacity: 0.9;
+                  }}
+                  .stats {{
+                      display: grid;
+                      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+                      gap: 20px;
+                      padding: 30px;
+                      background: #f8f9fa;
+                  }}
+                  .stat-card {{
+                      background: white;
+                      padding: 25px;
+                      border-radius: 10px;
+                      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                      text-align: center;
+                      transition: transform 0.3s;
+                  }}
+                  .stat-card:hover {{
+                      transform: translateY(-5px);
+                      box-shadow: 0 5px 20px rgba(0,0,0,0.15);
+                  }}
+                  .stat-number {{
+                      font-size: 3em;
+                      font-weight: bold;
+                      margin: 15px 0;
+                  }}
+                  .stat-label {{
+                      font-size: 1.1em;
+                      color: #666;
+                      text-transform: uppercase;
+                      letter-spacing: 1px;
+                  }}
+                  .critical {{ color: #e74c3c; }}
+                  .high {{ color: #e67e22; }}
+                  .medium {{ color: #f39c12; }}
+                  .low {{ color: #3498db; }}
+                  .info {{ color: #95a5a6; }}
+                  .pass {{ color: #27ae60; }}
+                  
+                  .tools {{
+                      padding: 30px;
+                  }}
+                  .tool-section {{
+                      margin-bottom: 30px;
+                      border: 1px solid #e0e0e0;
+                      border-radius: 10px;
+                      overflow: hidden;
+                  }}
+                  .tool-header {{
+                      background: #667eea;
+                      color: white;
+                      padding: 20px;
+                      font-size: 1.3em;
+                      font-weight: bold;
+                  }}
+                  .tool-content {{
+                      padding: 20px;
+                      background: white;
+                  }}
+                  .tool-item {{
+                      display: flex;
+                      justify-content: space-between;
+                      padding: 15px;
+                      border-bottom: 1px solid #f0f0f0;
+                  }}
+                  .tool-item:last-child {{
+                      border-bottom: none;
+                  }}
+                  .badge {{
+                      padding: 5px 15px;
+                      border-radius: 20px;
+                      font-size: 0.9em;
+                      font-weight: bold;
+                  }}
+                  .badge-critical {{ background: #e74c3c; color: white; }}
+                  .badge-high {{ background: #e67e22; color: white; }}
+                  .badge-medium {{ background: #f39c12; color: white; }}
+                  .badge-low {{ background: #3498db; color: white; }}
+                  .badge-pass {{ background: #27ae60; color: white; }}
+                  
+                  .footer {{
+                      background: #2c3e50;
+                      color: white;
+                      padding: 30px;
+                      text-align: center;
+                  }}
+                  .recommendations {{
+                      background: #fff3cd;
+                      border-left: 5px solid #ffc107;
+                      padding: 20px;
+                      margin: 20px 30px;
+                      border-radius: 5px;
+                  }}
+                  .recommendations h3 {{
+                      color: #856404;
+                      margin-bottom: 15px;
+                  }}
+                  .recommendations ul {{
+                      list-style-position: inside;
+                      color: #856404;
+                  }}
+                  .recommendations li {{
+                      margin: 8px 0;
+                  }}
+              </style>
+          </head>
+          <body>
+              <div class="container">
+                  <div class="header">
+                      <h1>🛡️ SkyLearn LMS Security Dashboard</h1>
+                      <p>Comprehensive Security Analysis Report</p>
+                      <p style="font-size: 0.9em; opacity: 0.8;">Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}</p>
+                  </div>
+                  
+                  <div class="stats">
+                      <div class="stat-card">
+                          <div class="stat-label">Critical Issues</div>
+                          <div class="stat-number critical">TBD</div>
+                          <p>Require Immediate Action</p>
+                      </div>
+                      <div class="stat-card">
+                          <div class="stat-label">High Severity</div>
+                          <div class="stat-number high">TBD</div>
+                          <p>Address Within 24 Hours</p>
+                      </div>
+                      <div class="stat-card">
+                          <div class="stat-label">Medium Severity</div>
+                          <div class="stat-number medium">TBD</div>
+                          <p>Plan Resolution</p>
+                      </div>
+                      <div class="stat-card">
+                          <div class="stat-label">Total Scans</div>
+                          <div class="stat-number info">6</div>
+                          <p>Security Tools Active</p>
+                      </div>
+                  </div>
+                  
+                  <div class="recommendations">
+                      <h3>🎯 Priority Recommendations for Risk Assessment</h3>
+                      <ul>
+                          <li><strong>Authentication & Authorization:</strong> Implement MFA, secure session management</li>
+                          <li><strong>Input Validation:</strong> Prevent SQL injection and XSS attacks</li>
+                          <li><strong>Data Protection:</strong> Encrypt sensitive student/instructor data</li>
+                          <li><strong>File Upload Security:</strong> Validate and scan uploaded files</li>
+                          <li><strong>Access Control:</strong> Enforce role-based access control (RBAC)</li>
+                          <li><strong>API Security:</strong> Implement rate limiting and CSRF protection</li>
+                      </ul>
+                  </div>
+                  
+                  <div class="tools">
+                      <h2 style="margin-bottom: 20px; color: #2c3e50;">📊 Security Scanning Tools Status</h2>
+                      
+                      <div class="tool-section">
+                          <div class="tool-header">🔍 OWASP Dependency-Check</div>
+                          <div class="tool-content">
+                              <div class="tool-item">
+                                  <span><strong>Purpose:</strong> Identifies known vulnerabilities in project dependencies</span>
+                                  <span class="badge badge-pass">✓ Active</span>
+                              </div>
+                              <div class="tool-item">
+                                  <span><strong>Target:</strong> requirements/*.txt files</span>
+                                  <span><strong>Schedule:</strong> Weekly (Mondays)</span>
+                              </div>
+                          </div>
+                      </div>
+                      
+                      <div class="tool-section">
+                          <div class="tool-header">🛡️ Trivy Security Scanner</div>
+                          <div class="tool-content">
+                              <div class="tool-item">
+                                  <span><strong>Purpose:</strong> Multi-scanner for vulnerabilities, secrets, and misconfigurations</span>
+                                  <span class="badge badge-pass">✓ Active</span>
+                              </div>
+                              <div class="tool-item">
+                                  <span><strong>Target:</strong> Filesystem, Docker configs</span>
+                                  <span><strong>Schedule:</strong> Weekly (Tuesdays)</span>
+                              </div>
+                          </div>
+                      </div>
+                      
+                      <div class="tool-section">
+                          <div class="tool-header">🐍 Bandit Python Security Scanner</div>
+                          <div class="tool-content">
+                              <div class="tool-item">
+                                  <span><strong>Purpose:</strong> Identifies common security issues in Python code</span>
+                                  <span class="badge badge-pass">✓ Active</span>
+                              </div>
+                              <div class="tool-item">
+                                  <span><strong>Target:</strong> All Python files</span>
+                                  <span><strong>Schedule:</strong> Weekly (Wednesdays)</span>
+                              </div>
+                          </div>
+                      </div>
+                      
+                      <div class="tool-section">
+                          <div class="tool-header">🔒 Safety Dependency Scanner</div>
+                          <div class="tool-content">
+                              <div class="tool-item">
+                                  <span><strong>Purpose:</strong> Checks Python dependencies for known security vulnerabilities</span>
+                                  <span class="badge badge-pass">✓ Active</span>
+                              </div>
+                              <div class="tool-item">
+                                  <span><strong>Target:</strong> requirements/base.txt, local.txt, production.txt</span>
+                                  <span><strong>Schedule:</strong> Weekly (Thursdays)</span>
+                              </div>
+                          </div>
+                      </div>
+                      
+                      <div class="tool-section">
+                          <div class="tool-header">🔬 Semgrep Static Analysis</div>
+                          <div class="tool-content">
+                              <div class="tool-item">
+                                  <span><strong>Purpose:</strong> Advanced pattern matching for security vulnerabilities</span>
+                                  <span class="badge badge-pass">✓ Active</span>
+                              </div>
+                              <div class="tool-item">
+                                  <span><strong>Rulesets:</strong> Python, Django, OWASP Top 10, SQLi, XSS</span>
+                                  <span><strong>Schedule:</strong> Weekly (Fridays)</span>
+                              </div>
+                          </div>
+                      </div>
+                      
+                      <div class="tool-section">
+                          <div class="tool-header">🔐 TruffleHog Secret Scanner</div>
+                          <div class="tool-content">
+                              <div class="tool-item">
+                                  <span><strong>Purpose:</strong> Detects exposed credentials and API keys</span>
+                                  <span class="badge badge-pass">✓ Active</span>
+                              </div>
+                              <div class="tool-item">
+                                  <span><strong>Target:</strong> Git history + Filesystem</span>
+                                  <span><strong>Schedule:</strong> Weekly (Saturdays)</span>
+                              </div>
+                          </div>
+                      </div>
+                  </div>
+                  
+                  <div class="footer">
+                      <h3>📋 Next Steps for CISM Mini Project</h3>
+                      <p style="margin-top: 15px;">1. Run all workflows and collect scan reports</p>
+                      <p>2. Analyze findings and identify 5-6 critical risks</p>
+                      <p>3. Assign each risk to a team member (6 members)</p>
+                      <p>4. Develop security controls and policies</p>
+                      <p>5. Create misuse case diagrams and threat models</p>
+                      <p style="margin-top: 20px; font-size: 0.9em;">
+                          Generated for IS4660 CISM Mini Project | Group 03 | 2026
+                      </p>
+                  </div>
+              </div>
+          </body>
+          </html>
+          """
+          
+          with open('security-dashboard.html', 'w') as f:
+              f.write(dashboard_html)
+          
+          print("✅ Security dashboard generated successfully!")
+          PYTHON_SCRIPT
+      
+      - name: Upload Security Dashboard
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-dashboard
+          path: security-dashboard.html
+          retention-days: 90
+      
+      - name: Create Summary Report
+        run: |
+          cat > workflow-summary.md <<'EOF'
+          # 🛡️ SkyLearn LMS Security Dashboard Summary
+          
+          ## Overview
+          This dashboard consolidates results from 6 automated security scanning tools.
+          
+          ## Active Security Tools
+          
+          | Tool | Purpose | Status | Schedule |
+          |------|---------|--------|----------|
+          | OWASP Dependency-Check | Vulnerability scanning for dependencies | ✅ Active | Mon 9:00 UTC |
+          | Trivy | Multi-purpose security scanner | ✅ Active | Tue 10:00 UTC |
+          | Bandit | Python code security analysis | ✅ Active | Wed 11:00 UTC |
+          | Safety | Python dependency vulnerabilities | ✅ Active | Thu 12:00 UTC |
+          | Semgrep | Static analysis with security rules | ✅ Active | Fri 13:00 UTC |
+          | TruffleHog | Secret and credential detection | ✅ Active | Sat 14:00 UTC |
+          
+          ## Risk Assessment Workflow
+          
+          1. **Automated Scanning**: All tools run automatically on push/PR and weekly
+          2. **Report Collection**: Download artifacts from each workflow run
+          3. **Risk Identification**: Analyze findings to identify 5-6 critical risks
+          4. **Control Assignment**: Assign each risk to a team member
+          5. **Documentation**: Create risk assessment report and security policies
+          
+          ## Key Focus Areas for LMS
+          
+          - 🔐 **Authentication & Authorization**
+          - 💉 **SQL Injection Prevention**
+          - 🔓 **XSS Protection**
+          - 📁 **File Upload Security**
+          - 🔑 **Session Management**
+          - 🚪 **Access Control (RBAC)**
+          
+          ## Next Actions
+          
+          - [ ] Trigger all workflows manually or wait for scheduled runs
+          - [ ] Download and review all security reports
+          - [ ] Identify 5-6 risks that can be mitigated through application controls
+          - [ ] Create risk assessment document
+          - [ ] Develop security policies
+          - [ ] Build misuse case diagrams
+          - [ ] Implement threat models
+          
+          ---
+          **Project**: SkyLearn LMS | **Course**: IS4660 CISM | **Group**: 03
+          EOF
+          
+          cat workflow-summary.md
+      
+      - name: Upload Workflow Summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: workflow-summary
+          path: workflow-summary.md
+          retention-days: 90
