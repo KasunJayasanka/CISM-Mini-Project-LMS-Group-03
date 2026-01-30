@@ -38,13 +38,17 @@ jobs:
         with:
           sarif_file: 'trivy-results.sarif'
       
+      - name: Download Trivy HTML template
+        run: |
+          curl -sSL -o trivy-html.tpl https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/html.tpl
+      
       - name: Run Trivy - Generate HTML Report
         uses: aquasecurity/trivy-action@master
         with:
           scan-type: 'fs'
           scan-ref: '.'
           format: 'template'
-          template: '@contrib/html.tpl'
+          template: 'trivy-html.tpl'
           output: 'trivy-report.html'
           severity: 'CRITICAL,HIGH,MEDIUM,LOW'
       
@@ -72,7 +76,7 @@ jobs:
         uses: aquasecurity/trivy-action@master
         with:
           scan-type: 'config'
-          scan-ref: '../../dockerfile'
+          scan-ref: './dockerfile'
           format: 'sarif'
           output: 'trivy-docker-results.sarif'
           severity: 'CRITICAL,HIGH'
