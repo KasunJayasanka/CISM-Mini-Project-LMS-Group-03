@@ -28,12 +28,15 @@ from .views import (
     register,
     render_lecturer_pdf_list,  # new
     render_student_pdf_list,  # new
+    CustomLoginView,  # Brute-force protection
 )
 
 # from .forms import EmailValidationOnForgotPassword
 
 
 urlpatterns = [
+    # Custom login with rate limiting (must be before django.contrib.auth.urls)
+    path("login/", CustomLoginView.as_view(), name="login"),
     path("", include("django.contrib.auth.urls")),
     path("admin_panel/", admin_panel, name="admin_panel"),
     path("profile/", profile, name="profile"),
