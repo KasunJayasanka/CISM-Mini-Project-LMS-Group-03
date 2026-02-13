@@ -25,6 +25,27 @@ from course.models import Course
 from result.models import TakenCourse
 
 # ########################################################
+# Custom Login View (Brute-Force Protection)
+# ########################################################
+
+from django.contrib.auth.views import LoginView
+from django.utils.decorators import method_decorator
+from accounts.decorators import rate_limit_ip
+
+
+@method_decorator(rate_limit_ip(limit=5, window=60), name='dispatch')
+class CustomLoginView(LoginView):
+    """
+    Custom login view with rate limiting to prevent brute-force attacks.
+    Limits login attempts to 5 per minute per IP address.
+    """
+    template_name = 'registration/login.html'
+    redirect_authenticated_user = True
+
+
+
+
+# ########################################################
 # Utility Functions
 # ########################################################
 
@@ -45,9 +66,36 @@ def render_to_pdf(template_name, context):
 # ########################################################
 
 
+# SECURITY FIX: Username Enumeration Prevention
+# The original validate_username function revealed whether usernames exist,
+# allowing attackers to enumerate valid accounts. This has been replaced with
+# a secure version that returns a generic response.
+
+# def validate_username(request):
+#     """
+#     VULNERABLE: This function reveals if a username exists in the database.
+#     Attackers can use this to enumerate valid usernames.
+#     """
+#     username = request.GET.get("username", None)
+#     data = {"is_taken": User.objects.filter(username__iexact=username).exists()}
+#     return JsonResponse(data)
+
+
 def validate_username(request):
+    """
+    Secure username validation endpoint.
+    Returns a generic response without revealing if username exists.
+    This prevents username enumeration attacks.
+    """
     username = request.GET.get("username", None)
-    data = {"is_taken": User.objects.filter(username__iexact=username).exists()}
+    
+    # Return a generic message without revealing username existence
+    # This makes it impossible for attackers to enumerate valid usernames
+    data = {
+        "is_taken": False,  # Always return False to prevent enumeration
+        "message": "Username validation is disabled for security reasons."
+    }
+    
     return JsonResponse(data)
 
 
