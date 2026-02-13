@@ -2,10 +2,12 @@ from django.contrib import messages
 from django.contrib.auth import update_session_auth_hash
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import PasswordChangeForm
+from django.core.cache import cache
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import get_template, render_to_string
 from django.utils.decorators import method_decorator
+from django.views.decorators.http import require_GET
 from django.views.generic import CreateView
 from django_filters.views import FilterView
 from xhtml2pdf import pisa
@@ -45,10 +47,41 @@ def render_to_pdf(template_name, context):
 # ########################################################
 
 
+USERNAME_VALIDATION_RATE_LIMIT_WINDOW_SECONDS = 60
+USERNAME_VALIDATION_RATE_LIMIT_MAX_REQUESTS = 20
+
+
+def _is_username_validation_rate_limited(request):
+    client_ip = request.META.get("REMOTE_ADDR", "unknown")
+    cache_key = f"username-validation:{client_ip}"
+
+    attempts = cache.get(cache_key, 0) + 1
+    cache.set(
+        cache_key,
+        attempts,
+        timeout=USERNAME_VALIDATION_RATE_LIMIT_WINDOW_SECONDS,
+    )
+    return attempts > USERNAME_VALIDATION_RATE_LIMIT_MAX_REQUESTS
+
+
+@require_GET
 def validate_username(request):
-    username = request.GET.get("username", None)
-    data = {"is_taken": User.objects.filter(username__iexact=username).exists()}
-    return JsonResponse(data)
+    if _is_username_validation_rate_limited(request):
+        return JsonResponse(
+            {
+                "ok": True,
+                "message": "Username availability is validated on form submission.",
+            },
+            status=429,
+        )
+
+    _ = request.GET.get("username", "")
+    return JsonResponse(
+        {
+            "ok": True,
+            "message": "Username availability is validated on form submission.",
+        }
+    )
 
 
 def register(request):
