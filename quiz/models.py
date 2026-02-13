@@ -17,7 +17,8 @@ from django.dispatch import receiver
 from model_utils.managers import InheritanceManager
 
 from course.models import Course
-from core.utils import unique_slug_generator
+from core.utils import unique_slug_generator, get_upload_path
+from core.validators import validate_image_type
 
 CHOICE_ORDER_OPTIONS = (
     ("content", _("Content")),
@@ -369,13 +370,33 @@ class Sitting(models.Model):
         return answered, total
 
 
+def question_figure_path(instance, filename):
+    # STEP: Generate a secure upload path for quiz images using UUID to ensure unique, unpredictable names.
+    return get_upload_path(instance, filename, prefix="uploads")
+
+
 class Question(models.Model):
     quiz = models.ManyToManyField(Quiz, verbose_name=_("Quiz"), blank=True)
+    # figure = models.ImageField(
+    #     upload_to="uploads/%Y/%m/%d",
+    #     blank=True,
+    #     verbose_name=_("Figure"),
+    #     help_text=_("Add an image for the question if necessary."),
+    # )
+    # figure = models.ImageField(
+    #     upload_to="uploads/%Y/%m/%d",
+    #     blank=True,
+    #     verbose_name=_("Figure"),
+    #     help_text=_("Add an image for the question if necessary."),
+    #     validators=[validate_image_type], # Secure file upload with MIME type validation
+    # )
+    # STEP: Change upload_to to use the secure path generator function for question figures.
     figure = models.ImageField(
-        upload_to="uploads/%Y/%m/%d",
+        upload_to=question_figure_path,
         blank=True,
         verbose_name=_("Figure"),
         help_text=_("Add an image for the question if necessary."),
+        validators=[validate_image_type], # Secure file upload with MIME type validation
     )
     content = models.CharField(
         max_length=1000,

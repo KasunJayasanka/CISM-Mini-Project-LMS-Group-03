@@ -1,5 +1,8 @@
-import random
+import secrets
 import string
+import uuid
+import os
+from datetime import datetime
 from django.utils.text import slugify
 from django.core.mail import send_mail
 from django.template.loader import render_to_string
@@ -36,7 +39,24 @@ def send_html_email(subject, recipient_list, template, context):
 
 
 def random_string_generator(size=10, chars=string.ascii_lowercase + string.digits):
-    return "".join(random.choice(chars) for _ in range(size))
+    # STEP: Use secrets.choice instead of random.choice for cryptographically secure random strings.
+    # This prevents attackers from predicting the state of the random number generator.
+    # return "".join(random.choice(chars) for _ in range(size))
+    return "".join(secrets.choice(chars) for _ in range(size))
+
+
+def get_upload_path(instance, filename, prefix):
+    """
+    Generate a secure, unique upload path using UUID.
+    Format: <prefix>/%Y/%m/%d/<uuid>.<ext>
+    """
+    # STEP: Generate a unique filename using UUID4 to prevent predictable filenames
+    # and unauthorized overwriting of existing files.
+    ext = filename.split('.')[-1]
+    filename = "%s.%s" % (uuid.uuid4(), ext)
+    today = datetime.now()
+    # STEP: Organize uploads into date-based subdirectories for better file management and performance.
+    return os.path.join(prefix, today.strftime('%Y/%m/%d'), filename)
 
 
 def unique_slug_generator(instance, new_slug=None):
