@@ -15,6 +15,16 @@ from gopay.enums import Recurrence, PaymentInstrument, BankSwiftCode, Currency, 
 from .models import Invoice
 
 
+def _get_server_invoice_amount():
+    """Invoice amount must be derived server-side, never from client input."""
+    default_amount = 26
+    configured_amount = getattr(settings, "DEFAULT_INVOICE_AMOUNT", default_amount)
+    try:
+        return float(configured_amount)
+    except (TypeError, ValueError):
+        return float(default_amount)
+
+
 def payment_paypal(request):
     return render(request, "payments/paypal.html", context={})
 
@@ -159,10 +169,11 @@ def paymentComplete(request):
 def create_invoice(request):
     print(request.is_ajax())
     if request.method == "POST":
+        invoice_amount = _get_server_invoice_amount()
         invoice = Invoice.objects.create(
             user=request.user,
-            amount=request.POST.get("amount"),
-            total=26,
+            amount=invoice_amount,
+            total=invoice_amount,
             invoice_code=str(uuid.uuid4()),
         )
         request.session["invoice_session"] = invoice.invoice_code
