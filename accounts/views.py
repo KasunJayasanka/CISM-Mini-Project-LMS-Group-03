@@ -1,3 +1,5 @@
+import logging
+
 from django.contrib import messages
 from django.contrib.auth import update_session_auth_hash
 from django.contrib.auth.decorators import login_required
@@ -24,9 +26,22 @@ from core.models import Semester, Session
 from course.models import Course
 from result.models import TakenCourse
 
+logger = logging.getLogger('django.security')
+account_logger = logging.getLogger('accounts')
+
 # ########################################################
 # Utility Functions
 # ########################################################
+
+
+def get_client_ip(request):
+    """Extract client IP address from request."""
+    x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+    if x_forwarded_for:
+        ip = x_forwarded_for.split(',')[0]
+    else:
+        ip = request.META.get('REMOTE_ADDR')
+    return ip
 
 
 def render_to_pdf(template_name, context):
@@ -55,7 +70,12 @@ def register(request):
     if request.method == "POST":
         form = StudentAddForm(request.POST)
         if form.is_valid():
-            form.save()
+            user = form.save()
+            logger.info(
+                f"ACCOUNT_CREATED | Type: student | Username: {user.username} | "
+                f"Email: {user.email} | IP: {get_client_ip(request)} | Self-registration: True"
+            )
+            
             messages.success(request, "Account created successfully.")
             return redirect("login")
         messages.error(
@@ -125,6 +145,11 @@ def profile_single(request, user_id):
         is_current_semester=True, session=current_session
     ).first()
     user = get_object_or_404(User, pk=user_id)
+    logger.info(
+        f"PROFILE_ACCESS | Viewer: {request.user.username} | "
+        f"Target: {user.username} | Type: {user.get_user_role} |"
+        f"IP: {get_client_ip(request)} | Success: True"
+    )
 
     context = {
         "title": user.get_full_name,
@@ -196,8 +221,18 @@ def change_password(request):
         if form.is_valid():
             user = form.save()
             update_session_auth_hash(request, user)
+            logger.info(
+                f"PASSWORD_CHANGED | User: {user.username} | "
+                f"IP: {get_client_ip(request)} | Success: True"
+            )
+            
             messages.success(request, "Your password was successfully updated!")
             return redirect("profile")
+        else:
+            logger.warning(
+                f"PASSWORD_CHANGE_FAILED | User: {request.user.username} | "
+                f"IP: {get_client_ip(request)} | Errors: {form.errors}"
+            )
         messages.error(request, "Please correct the error(s) below.")
     else:
         form = PasswordChangeForm(request.user)
@@ -218,6 +253,13 @@ def staff_add_view(request):
             lecturer = form.save()
             full_name = lecturer.get_full_name
             email = lecturer.email
+
+            logger.info(
+                f"ACCOUNT_CREATED | Type: lecturer | Username: {lecturer.username} | "
+                f"Email: {email} | Created by: {request.user.username} | "
+                f"IP: {get_client_ip(request)}"
+            )
+            
             messages.success(
                 request,
                 f"Account for lecturer {full_name} has been created. "
@@ -284,6 +326,14 @@ def render_lecturer_pdf_list(request):
 def delete_staff(request, pk):
     lecturer = get_object_or_404(User, is_lecturer=True, pk=pk)
     full_name = lecturer.get_full_name
+    username = lecturer.username
+    
+    logger.warning(
+        f"ACCOUNT_DELETED | Type: lecturer | Username: {username} | "
+        f"Name: {full_name} | Deleted by: {request.user.username} | "
+        f"IP: {get_client_ip(request)}"
+    )
+    
     lecturer.delete()
     messages.success(request, f"Lecturer {full_name} has been deleted.")
     return redirect("lecturer_list")
@@ -303,6 +353,13 @@ def student_add_view(request):
             student = form.save()
             full_name = student.get_full_name
             email = student.email
+            
+            logger.info(
+                f"ACCOUNT_CREATED | Type: student | Username: {student.username} | "
+                f"Email: {email} | Created by: {request.user.username} | "
+                f"IP: {get_client_ip(request)}"
+            )
+            
             messages.success(
                 request,
                 f"Account for {full_name} has been created. "
@@ -370,6 +427,14 @@ def render_student_pdf_list(request):
 def delete_student(request, pk):
     student = get_object_or_404(Student, pk=pk)
     full_name = student.student.get_full_name
+    username = student.student.username
+    
+    logger.warning(
+        f"ACCOUNT_DELETED | Type: student | Username: {username} | "
+        f"Name: {full_name} | Deleted by: {request.user.username} | "
+        f"IP: {get_client_ip(request)}"
+    )
+    
     student.delete()
     messages.success(request, f"Student {full_name} has been deleted.")
     return redirect("student_list")

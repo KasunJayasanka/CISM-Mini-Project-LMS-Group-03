@@ -113,7 +113,7 @@ class User(AbstractUser):
     def get_picture(self):
         try:
             return self.picture.url
-        except:
+        except (ValueError, AttributeError):
             no_picture = settings.MEDIA_URL + "default.png"
             return no_picture
 
@@ -128,8 +128,16 @@ class User(AbstractUser):
                 output_size = (300, 300)
                 img.thumbnail(output_size)
                 img.save(self.picture.path)
-        except:
-            pass
+        except (IOError, OSError) as e:
+            logger.error(
+                f"Error processing image for user {self.username}: {str(e)}",
+                exc_info=True
+            )
+        except Exception as e:
+            logger.error(
+                f"Unexpected error saving image for user {self.username}: {str(e)}",
+                exc_info=True
+            )
 
     def delete(self, *args, **kwargs):
         if self.picture.url != settings.MEDIA_URL + "default.png":
