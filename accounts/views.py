@@ -9,6 +9,8 @@ from django.utils.decorators import method_decorator
 from django.views.generic import CreateView
 from django_filters.views import FilterView
 from xhtml2pdf import pisa
+from django.views.decorators.http import require_POST
+
 
 from accounts.decorators import admin_required
 from accounts.filters import LecturerFilter, StudentFilter
@@ -281,6 +283,7 @@ def render_lecturer_pdf_list(request):
 
 @login_required
 @admin_required
+@require_POST
 def delete_staff(request, pk):
     lecturer = get_object_or_404(User, is_lecturer=True, pk=pk)
     full_name = lecturer.get_full_name
@@ -367,6 +370,7 @@ def render_student_pdf_list(request):
 
 @login_required
 @admin_required
+@require_POST
 def delete_student(request, pk):
     student = get_object_or_404(Student, pk=pk)
     full_name = student.student.get_full_name
