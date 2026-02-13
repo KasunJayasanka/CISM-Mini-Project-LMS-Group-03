@@ -1,3 +1,5 @@
+from decimal import Decimal, InvalidOperation
+
 from django.shortcuts import render, get_object_or_404
 from django.contrib import messages
 from django.http import HttpResponseRedirect
@@ -30,6 +32,30 @@ from .models import TakenCourse, Result
 
 
 CM = 2.54
+
+
+def _validate_score_payload(raw_scores):
+    """
+    Validate expected score payload structure and value range.
+    Expected order: assignment, mid_exam, quiz, attendance, final_exam.
+    """
+    score_fields = ("assignment", "mid_exam", "quiz", "attendance", "final_exam")
+    if len(raw_scores) != len(score_fields):
+        raise ValueError("Expected exactly 5 score values.")
+
+    parsed_scores = {}
+    for field, raw_value in zip(score_fields, raw_scores):
+        try:
+            value = Decimal(str(raw_value))
+        except (InvalidOperation, TypeError, ValueError):
+            raise ValueError(f"{field} must be a valid numeric value.")
+
+        if value < 0 or value > 100:
+            raise ValueError(f"{field} must be between 0 and 100.")
+
+        parsed_scores[field] = value
+
+    return parsed_scores
 
 
 # ########################################################
@@ -115,6 +141,26 @@ def add_score_for(request, id):
             ids = ids + (
                 str(key),
             )  # gather all the all students id (i.e the keys) in a tuple
+
+        validated_scores = {}
+        for taken_course_id in ids:
+            if not str(taken_course_id).isdigit():
+                messages.error(request, "Invalid score submission format.")
+                return HttpResponseRedirect(
+                    reverse_lazy("add_score_for", kwargs={"id": id})
+                )
+
+            score = data.getlist(taken_course_id)
+            try:
+                validated_scores[taken_course_id] = _validate_score_payload(score)
+            except ValueError as exc:
+                messages.error(
+                    request, f"Invalid score payload for record {taken_course_id}: {exc}"
+                )
+                return HttpResponseRedirect(
+                    reverse_lazy("add_score_for", kwargs={"id": id})
+                )
+
         for s in range(
             0, len(ids)
         ):  # iterate over the list of student ids gathered above
@@ -132,16 +178,12 @@ def add_score_for(request, id):
                 if i == courses.count():
                     break
                 total_credit_in_semester += int(i.credit)
-            score = data.getlist(
-                ids[s]
-            )  # get list of score for current student in the loop
-            assignment = score[
-                0
-            ]  # subscript the list to get the fisrt value > ca score
-            mid_exam = score[1]  # do the same for exam score
-            quiz = score[2]
-            attendance = score[3]
-            final_exam = score[4]
+            score = validated_scores[ids[s]]
+            assignment = score["assignment"]
+            mid_exam = score["mid_exam"]
+            quiz = score["quiz"]
+            attendance = score["attendance"]
+            final_exam = score["final_exam"]
             obj = TakenCourse.objects.get(pk=ids[s])  # get the current student data
             obj.assignment = assignment  # set current student assignment score
             obj.mid_exam = mid_exam  # set current student mid_exam score
