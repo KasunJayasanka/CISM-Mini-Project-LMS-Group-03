@@ -1,3 +1,5 @@
+import logging
+
 from django.shortcuts import render, get_object_or_404
 from django.contrib import messages
 from django.http import HttpResponseRedirect
@@ -27,6 +29,9 @@ from course.models import Course
 from accounts.models import Student
 from accounts.decorators import lecturer_required, student_required
 from .models import TakenCourse, Result
+
+logger = logging.getLogger('django.security')
+result_logger = logging.getLogger('result')
 
 
 CM = 2.54
@@ -173,7 +178,19 @@ def add_score_for(request, id):
                 a.gpa = gpa
                 a.cgpa = cgpa
                 a.save()
-            except:
+            except Result.DoesNotExist:
+                Result.objects.get_or_create(
+                    student=student.student,
+                    gpa=gpa,
+                    semester=current_semester,
+                    session=current_session,
+                    level=student.student.level,
+                )
+            except Exception as e:
+                logger.error(
+                    f"Error updating result for student {student.student.username}: {str(e)}",
+                    exc_info=True
+                )
                 Result.objects.get_or_create(
                     student=student.student,
                     gpa=gpa,
@@ -238,7 +255,13 @@ def grade_result(request):
             )
             previousCGPA = a.cgpa
             break
-        except:
+        except Result.DoesNotExist:
+            previousCGPA = 0
+        except Exception as e:
+            logger.warning(
+                f"Error retrieving previous CGPA for user {request.user.id}: {str(e)}",
+                exc_info=True
+            )
             previousCGPA = 0
 
     context = {
