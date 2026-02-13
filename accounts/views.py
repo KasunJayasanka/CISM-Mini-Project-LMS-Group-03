@@ -1,3 +1,4 @@
+import logging
 from django.contrib import messages
 from django.contrib.auth import update_session_auth_hash
 from django.contrib.auth.decorators import login_required
@@ -12,6 +13,8 @@ from xhtml2pdf import pisa
 from django.views.decorators.http import require_POST
 from django.contrib.sessions.models import Session as DjangoSession
 from django.utils import timezone
+
+logger = logging.getLogger(__name__)
 
 
 from accounts.decorators import admin_required
@@ -284,7 +287,8 @@ def render_lecturer_pdf_list(request):
     html = template.render(context)
     pisa_status = pisa.CreatePDF(html, dest=response)
     if pisa_status.err:
-        return HttpResponse(f"We had some errors <pre>{html}</pre>")
+        logger.error("PDF generation failed. HTML length=%s", len(html))
+        return HttpResponse("We had some errors generating the PDF.", status=500)
     return response
 
 
@@ -371,7 +375,8 @@ def render_student_pdf_list(request):
     html = template.render(context)
     pisa_status = pisa.CreatePDF(html, dest=response)
     if pisa_status.err:
-        return HttpResponse(f"We had some errors <pre>{html}</pre>")
+        logger.error("PDF generation failed. HTML length=%s", len(html))
+        return HttpResponse("We had some errors generating the PDF.", status=500)
     return response
 
 
