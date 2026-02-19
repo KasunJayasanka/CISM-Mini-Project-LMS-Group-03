@@ -1,3 +1,4 @@
+import logging
 from django.contrib import messages
 from django.contrib.auth import update_session_auth_hash
 from django.contrib.auth.decorators import login_required
@@ -9,6 +10,12 @@ from django.utils.decorators import method_decorator
 from django.views.generic import CreateView
 from django_filters.views import FilterView
 from xhtml2pdf import pisa
+from django.views.decorators.http import require_POST
+from django.contrib.sessions.models import Session as DjangoSession
+from django.utils import timezone
+
+logger = logging.getLogger(__name__)
+
 
 from accounts.decorators import admin_required
 from accounts.filters import LecturerFilter, StudentFilter
@@ -195,13 +202,18 @@ def change_password(request):
         form = PasswordChangeForm(request.user, request.POST)
         if form.is_valid():
             user = form.save()
-            update_session_auth_hash(request, user)
-            messages.success(request, "Your password was successfully updated!")
+            update_session_auth_hash(request, user)  # keep current session
+            logout_other_sessions(user, request.session.session_key)  # kill others
+            messages.success(
+                request,
+                "Your password was successfully updated. Other sessions were logged out.",
+            )
             return redirect("profile")
         messages.error(request, "Please correct the error(s) below.")
     else:
         form = PasswordChangeForm(request.user)
     return render(request, "setting/password_change.html", {"form": form})
+
 
 
 # ########################################################
@@ -275,12 +287,14 @@ def render_lecturer_pdf_list(request):
     html = template.render(context)
     pisa_status = pisa.CreatePDF(html, dest=response)
     if pisa_status.err:
-        return HttpResponse(f"We had some errors <pre>{html}</pre>")
+        logger.error("PDF generation failed. HTML length=%s", len(html))
+        return HttpResponse("We had some errors generating the PDF.", status=500)
     return response
 
 
 @login_required
 @admin_required
+@require_POST
 def delete_staff(request, pk):
     lecturer = get_object_or_404(User, is_lecturer=True, pk=pk)
     full_name = lecturer.get_full_name
@@ -361,12 +375,14 @@ def render_student_pdf_list(request):
     html = template.render(context)
     pisa_status = pisa.CreatePDF(html, dest=response)
     if pisa_status.err:
-        return HttpResponse(f"We had some errors <pre>{html}</pre>")
+        logger.error("PDF generation failed. HTML length=%s", len(html))
+        return HttpResponse("We had some errors generating the PDF.", status=500)
     return response
 
 
 @login_required
 @admin_required
+@require_POST
 def delete_student(request, pk):
     student = get_object_or_404(Student, pk=pk)
     full_name = student.student.get_full_name
@@ -411,3 +427,17 @@ class ParentAdd(CreateView):
     def form_valid(self, form):
         messages.success(self.request, "Parent added successfully.")
         return super().form_valid(form)
+    
+def logout_other_sessions(user, current_session_key=None):
+    """
+    Delete all active sessions for a user except the current session.
+    Works when using DB-backed sessions.
+    """
+    sessions = DjangoSession.objects.filter(expire_date__gte=timezone.now())
+    for session in sessions:
+        data = session.get_decoded()
+        if str(data.get("_auth_user_id")) == str(user.id):
+            if current_session_key and session.session_key == current_session_key:
+                continue
+            session.delete()
+

@@ -1,11 +1,14 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.views.decorators.http import require_POST
+
 
 from accounts.decorators import admin_required, lecturer_required
 from accounts.models import User, Student
 from .forms import SessionForm, SemesterForm, NewsAndEventsForm
 from .models import NewsAndEvents, ActivityLog, Session, Semester
+
 
 
 # ########################################################
@@ -71,6 +74,7 @@ def edit_post(request, pk):
 
 @login_required
 @lecturer_required
+@require_POST
 def delete_post(request, pk):
     post = get_object_or_404(NewsAndEvents, pk=pk)
     post_title = post.title

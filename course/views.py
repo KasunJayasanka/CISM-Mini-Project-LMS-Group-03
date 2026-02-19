@@ -1,6 +1,7 @@
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.views.decorators.http import require_POST
 from django.core.paginator import Paginator
 from django.db.models import Sum
 from django.shortcuts import get_object_or_404, redirect, render
@@ -180,6 +181,7 @@ def course_edit(request, slug):
 
 @login_required
 @lecturer_required
+@require_POST
 def course_delete(request, slug):
     course = get_object_or_404(Course, slug=slug)
     title = course.title

@@ -11,7 +11,8 @@
       {% trans 'Sign in' %}
     </div>
     <div class="card-body">
-        <form action="" method="POST" id="login-form">{% csrf_token %}
+        <form action="" method="POST" id="login-form">
+          {% csrf_token %}
           <div class="form-group mb-3">
               <label class="mb-2" for="username_id"><i class="fas fa-address-card me-2"></i>{% trans 'ID Number' %}</label>
               <input type="text" name="username" id="username_id" class="form-control" required>

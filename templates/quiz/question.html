@@ -142,7 +142,8 @@
 		</div>
 		{% endif %}
 		<div class="card-subtitle p-4">
-			<form action="" method="POST">{% csrf_token %}
+			<form action="" method="POST">
+				{% csrf_token %}
 				<input type="hidden" name="question_id" value="{{ question.id }}">
 
 				<ul class="list-group">
