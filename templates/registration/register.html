@@ -85,6 +85,7 @@
 <script>
   const loginFormEl = document.getElementById('login-form');
   const loginBtnEl = document.getElementById('login-btn');
+  const usernameHint = 'Username availability is validated when you submit the form.';
 
   loginFormEl.addEventListener('submit', () => {
     loginBtnEl.innerHTML = '<i class="fas fa-sign-in-alt"></i> Signining you in . . .';
@@ -92,7 +93,11 @@
   })
 
   $("#username_id").on("input", function () {
-    username = $(this).val();
+    const username = $(this).val();
+    if (!username) {
+      $('#message-wrapper').html('');
+      return;
+    }
 
     $.ajax({
       url: "/accounts/ajax/validate-username/",
@@ -100,16 +105,12 @@
         username: username
       },
       dataType: 'json',
-      success: function (data) {
-        if (data.is_taken) {
-          console.log(data.is_taken);
-          $('#message-wrapper').html(`<p class="my-2 text-danger"><span class="bg-error p-2"><b>${username}</b> already taken :( try another one </span></p>`)
-        }
-        else {
-          $('#message-wrapper').html(`<p class="my-2 text-success"><span class="bg-correct p-2"><b>${username}</b> is valid </span></p>`)
-        }
+      success: function () {
+        $('#message-wrapper').html(`<p class="my-2 text-muted"><span class="p-2">${usernameHint}</span></p>`)
+      },
+      error: function () {
+        $('#message-wrapper').html(`<p class="my-2 text-muted"><span class="p-2">${usernameHint}</span></p>`)
       }
-
     })
   })
 </script>

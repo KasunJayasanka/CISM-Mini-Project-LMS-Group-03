@@ -15,6 +15,27 @@ from gopay.enums import Recurrence, PaymentInstrument, BankSwiftCode, Currency, 
 from .models import Invoice
 
 
+def _get_server_invoice_amount():
+    """Invoice amount must be derived server-side, never from client input."""
+    default_amount = 26
+    configured_amount = getattr(settings, "DEFAULT_INVOICE_AMOUNT", default_amount)
+    try:
+        return float(configured_amount)
+    except (TypeError, ValueError):
+        return float(default_amount)
+
+
+def _get_session_invoice_for_user(request):
+    """
+    Resolve the invoice referenced in session using invoice_code and validate
+    it belongs to the currently authenticated user.
+    """
+    invoice_code = request.session.get("invoice_session")
+    if not invoice_code or not request.user.is_authenticated:
+        return None
+    return Invoice.objects.filter(invoice_code=invoice_code, user=request.user).first()
+
+
 def payment_paypal(request):
     return render(request, "payments/paypal.html", context={})
 
@@ -43,7 +64,8 @@ class PaymentGetwaysView(TemplateView):
         context["key"] = settings.STRIPE_PUBLISHABLE_KEY
         context["amount"] = 500
         context["description"] = "Stripe Payment"
-        context["invoice_session"] = self.request.session["invoice_session"]
+        invoice = _get_session_invoice_for_user(self.request)
+        context["invoice_session"] = invoice.invoice_code if invoice else ""
         print(context["invoice_session"])
         return context
 
@@ -52,14 +74,16 @@ def stripe_charge(request):
     stripe.api_key = settings.STRIPE_SECRET_KEY
 
     if request.method == "POST":
+        invoice = _get_session_invoice_for_user(request)
+        if not invoice:
+            return JsonResponse({"message": "Invalid invoice session."}, status=400)
+
         charge = stripe.Charge.create(
             amount=500,
             currency="eur",
             description="A Django charge",
             source=request.POST["stripeToken"],
         )
-        invoice_code = request.session["invoice_session"]
-        invoice = Invoice.objects.get(invoice_code=invoice_code)
         invoice.payment_complete = True
         invoice.save()
         return redirect("completed")
@@ -146,8 +170,9 @@ def gopay_charge(request):
 def paymentComplete(request):
     print(request.is_ajax())
     if request.is_ajax() or request.method == "POST":
-        invoice_id = request.session["invoice_session"]
-        invoice = Invoice.objects.get(id=invoice_id)
+        invoice = _get_session_invoice_for_user(request)
+        if not invoice:
+            return JsonResponse({"message": "Invalid invoice session."}, status=400)
         invoice.payment_complete = True
         invoice.save()
         # return redirect('invoice', invoice.invoice_code)
@@ -159,10 +184,11 @@ def paymentComplete(request):
 def create_invoice(request):
     print(request.is_ajax())
     if request.method == "POST":
+        invoice_amount = _get_server_invoice_amount()
         invoice = Invoice.objects.create(
             user=request.user,
-            amount=request.POST.get("amount"),
-            total=26,
+            amount=invoice_amount,
+            total=invoice_amount,
             invoice_code=str(uuid.uuid4()),
         )
         request.session["invoice_session"] = invoice.invoice_code
