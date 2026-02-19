@@ -18,6 +18,7 @@ RUN apt-get update && \
     python3-dev \
     libpq-dev \
     libjpeg-dev \
+    libmagic1 \
     zlib1g-dev && \
     rm -rf /var/lib/apt/lists/*
 
@@ -25,16 +26,16 @@ RUN apt-get update && \
 COPY requirements ./requirements
 
 # Install Python dependencies - try different requirement files
-RUN pip install --upgrade pip setuptools wheel && \
+RUN pip install --upgrade pip "setuptools<70.0.0" wheel && \
     if [ -f requirements/local.txt ]; then \
-        pip install -r requirements/local.txt; \
+    pip install -r requirements/local.txt; \
     elif [ -f requirements/base.txt ]; then \
-        pip install -r requirements/base.txt; \
+    pip install -r requirements/base.txt; \
     elif [ -f requirements.txt ]; then \
-        pip install -r requirements.txt; \
+    pip install -r requirements.txt; \
     else \
-        echo "Installing default Django packages" && \
-        pip install Django psycopg2-binary Pillow gunicorn whitenoise python-decouple; \
+    echo "Installing default Django packages" && \
+    pip install Django psycopg2-binary Pillow gunicorn whitenoise python-decouple; \
     fi
 
 # Copy project files

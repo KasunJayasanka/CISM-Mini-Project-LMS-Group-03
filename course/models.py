@@ -8,7 +8,8 @@ from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
 
 from core.models import ActivityLog, Semester
-from core.utils import unique_slug_generator
+from core.utils import unique_slug_generator, get_upload_path
+from core.validators import validate_document_type, validate_video_type
 
 
 class ProgramManager(models.Manager):
@@ -120,11 +121,63 @@ class CourseAllocation(models.Model):
         return reverse("edit_allocated_course", kwargs={"pk": self.pk})
 
 
+def course_file_path(instance, filename):
+    # STEP: Generate a secure, unique filename using UUID and organize it by date.
+    # This prevents predictable filenames and unauthorized file overwrites.
+    return get_upload_path(instance, filename, prefix="course_files")
+
+
 class Upload(models.Model):
     title = models.CharField(max_length=100)
     course = models.ForeignKey(Course, on_delete=models.CASCADE)
+    # file = models.FileField(
+    #     upload_to="course_files/",
+    #     help_text=_(
+    #         "Valid Files: pdf, docx, doc, xls, xlsx, ppt, pptx, zip, rar, 7zip"
+    #     ),
+    #     validators=[
+    #         FileExtensionValidator(
+    #             [
+    #                 "pdf",
+    #                 "docx",
+    #                 "doc",
+    #                 "xls",
+    #                 "xlsx",
+    #                 "ppt",
+    #                 "pptx",
+    #                 "zip",
+    #                 "rar",
+    #                 "7zip",
+    #             ]
+    #         )
+    #     ],
+    # )
+    # file = models.FileField(
+    #     upload_to=course_file_path,
+    #     help_text=_(
+    #         "Valid Files: pdf, docx, doc, xls, xlsx, ppt, pptx, zip, rar, 7zip"
+    #     ),
+    #     validators=[
+    #         FileExtensionValidator(
+    #             [
+    #                 "pdf",
+    #                 "docx",
+    #                 "doc",
+    #                 "xls",
+    #                 "xlsx",
+    #                 "ppt",
+    #                 "pptx",
+    #                 "zip",
+    #                 "rar",
+    #                 "7zip",
+    #             ]
+    #         ),
+    #         validate_document_type, # Secure file upload with MIME type validation
+    #     ],
+    # )
+    # STEP: Use the secure path generator for document uploads to mitigate path predictability.
     file = models.FileField(
-        upload_to="course_files/",
+        upload_to=course_file_path,
         help_text=_(
             "Valid Files: pdf, docx, doc, xls, xlsx, ppt, pptx, zip, rar, 7zip"
         ),
@@ -142,7 +195,8 @@ class Upload(models.Model):
                     "rar",
                     "7zip",
                 ]
-            )
+            ),
+            validate_document_type, # Secure file upload with MIME type validation
         ],
     )
     updated_date = models.DateTimeField(auto_now=True)
@@ -192,17 +246,42 @@ def log_upload_delete(sender, instance, **kwargs):
     )
 
 
+def course_video_path(instance, filename):
+    # STEP: Generate a secure, unique filename for video uploads using UUID.
+    return get_upload_path(instance, filename, prefix="course_videos")
+
+
 class UploadVideo(models.Model):
     title = models.CharField(max_length=100)
     slug = models.SlugField(unique=True, blank=True)
     course = models.ForeignKey(Course, on_delete=models.CASCADE)
+    # video = models.FileField(
+    #     upload_to="course_videos/",
+    #     help_text=_("Valid video formats: mp4, mkv, wmv, 3gp, f4v, avi, mp3"),
+    #     validators=[
+    #         FileExtensionValidator(["mp4", "mkv", "wmv", "3gp", "f4v", "avi", "mp3"])
+    #     ],
+    # )
+    
+    # video = models.FileField(
+    #     upload_to="course_videos/",
+    #     help_text=_("Valid video formats: mp4, mkv, wmv, 3gp, f4v, avi, mp3"),
+    #     validators=[
+    #         FileExtensionValidator(["mp4", "mkv", "wmv", "3gp", "f4v", "avi", "mp3"]),
+    #         validate_video_type, # Secure file upload with MIME type validation
+    #     ],
+    # )
+    
+    # STEP: Use the secure path generator for video uploads to prevent predictable URLs and file collisions.
     video = models.FileField(
-        upload_to="course_videos/",
+        upload_to=course_video_path,
         help_text=_("Valid video formats: mp4, mkv, wmv, 3gp, f4v, avi, mp3"),
         validators=[
-            FileExtensionValidator(["mp4", "mkv", "wmv", "3gp", "f4v", "avi", "mp3"])
+            FileExtensionValidator(["mp4", "mkv", "wmv", "3gp", "f4v", "avi", "mp3"]),
+            validate_video_type, # Secure file upload with MIME type validation
         ],
     )
+
     summary = models.TextField(blank=True)
     timestamp = models.DateTimeField(auto_now_add=True)
 
@@ -245,7 +324,6 @@ def log_uploadvideo_delete(sender, instance, **kwargs):
             f"The video '{instance.title}' of the course '{instance.course}' has been deleted."
         )
     )
-
 
 class CourseOffer(models.Model):
     """NOTE: Only department head can offer semester courses"""

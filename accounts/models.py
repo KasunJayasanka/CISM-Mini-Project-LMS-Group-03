@@ -7,7 +7,10 @@ from django.db.models import Q
 from PIL import Image
 
 from course.models import Program
+from course.models import Program
 from .validators import ASCIIUsernameValidator
+from core.validators import validate_image_type
+from core.utils import get_upload_path
 
 
 # LEVEL_COURSE = "Level course"
@@ -67,6 +70,12 @@ class CustomUserManager(UserManager):
 GENDERS = ((_("M"), _("Male")), (_("F"), _("Female")))
 
 
+def user_profile_path(instance, filename):
+    # STEP: Use the secure get_upload_path utility to generate a unique, non-predictable path
+    # for profile pictures. This addresses the vulnerability of predictable uploaded filenames.
+    return get_upload_path(instance, filename, prefix="profile_pictures")
+
+
 class User(AbstractUser):
     is_student = models.BooleanField(default=False)
     is_lecturer = models.BooleanField(default=False)
@@ -75,8 +84,14 @@ class User(AbstractUser):
     gender = models.CharField(max_length=1, choices=GENDERS, blank=True, null=True)
     phone = models.CharField(max_length=60, blank=True, null=True)
     address = models.CharField(max_length=60, blank=True, null=True)
+    # picture = models.ImageField(
+    #     upload_to="profile_pictures/%y/%m/%d/", default="default.png", null=True,
+    #     validators=[validate_image_type], # Secure file upload with MIME type validation
+    # )
+    # STEP: Point upload_to to our secure path generator function instead of a hardcoded string.
     picture = models.ImageField(
-        upload_to="profile_pictures/%y/%m/%d/", default="default.png", null=True
+        upload_to=user_profile_path, default="default.png", null=True,
+        validators=[validate_image_type], # Secure file upload with MIME type validation
     )
     email = models.EmailField(blank=True, null=True)
 
