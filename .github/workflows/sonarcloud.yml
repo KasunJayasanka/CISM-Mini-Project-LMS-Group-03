@@ -31,10 +31,13 @@ jobs:
           DJANGO_SETTINGS_MODULE: config.settings
           PYTHONPATH: .
           SECRET_KEY: "ci-dummy-secret-key"
-          DEBUG: "False"
+          EMAIL_HOST_USER: "ci@example.com"
+          EMAIL_HOST_PASSWORD: "dummy-password"
+          EMAIL_FROM_ADDRESS: "ci@example.com"
         run: |
           coverage run -m pytest
           coverage xml -o coverage.xml
+
 
       - name: SonarCloud Scan
         uses: SonarSource/sonarcloud-github-action@v3
