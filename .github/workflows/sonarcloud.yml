@@ -29,6 +29,9 @@ jobs:
       - name: Run tests + coverage
         env:
           DJANGO_SETTINGS_MODULE: config.settings
+          PYTHONPATH: .
+          SECRET_KEY: "ci-dummy-secret-key"
+          DEBUG: "False"
         run: |
           coverage run -m pytest
           coverage xml -o coverage.xml
